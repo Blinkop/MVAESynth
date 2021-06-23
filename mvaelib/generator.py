@@ -1,4 +1,3 @@
-from .models import MVAE3
 from .mvae_utils import transform_vk, transform_in, transform_tr
 
 import torch
@@ -6,12 +5,15 @@ import pandas as pd
 import joblib
 
 class ProfilesGenerator(object):
-    def __init__(self, filename=None, device='cpu'):
-        if not filename:
+    def __init__(self, use_memvae=False, filename=None, device='cpu'):
+        if not filename and not use_memvae:
             filename = 'mvae3_best2.model'
+        elif not filename and use_memvae:
+            filename = 'memvae3_best.model'
 
         device = torch.device(device)
 
+        self.use_memvae = use_memvae
         self._model = torch.load(filename)
         self._model.to(device)
         self._model.eval()
@@ -72,7 +74,12 @@ class ProfilesGenerator(object):
 
         if noise is not None:
             noise = torch.tensor(noise).float().to(next(self._model.parameters()).device)
-            decoded = self._model.decode(noise)
+            if self.use_memvae:
+                z0 = torch.normal(0, 1, size=noise.shape)
+                decoded = self._model.decode(noise, z0)
+            else:
+                z0 = torch.normal(0, 1, size=noise.shape)
+                decoded = self._model.decode(noise)
 
             for i in range(len(decoded)):
                 decoded[i] = decoded[i].cpu().numpy()
@@ -92,7 +99,11 @@ class ProfilesGenerator(object):
             _tr = self._standardize_transactions(transactions)
             _tr = torch.tensor(_tr).float().to(next(self._model.parameters()).device)
 
-        vk_recon, in_recon, tr_recon, _, _ = self._model(_vk, _in, _tr)
+        if self.use_memvae:
+            vk_recon, in_recon, tr_recon, _, _, _, _, _, _, _, _ = self._model(_vk, _in, _tr)
+        else:
+            vk_recon, in_recon, tr_recon, _, _ = self._model(_vk, _in, _tr)
+
         vk_recon = vk_recon.cpu().numpy()
         in_recon = in_recon.cpu().numpy()
         tr_recon = tr_recon.cpu().numpy()
